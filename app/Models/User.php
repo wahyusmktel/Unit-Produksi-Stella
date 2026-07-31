@@ -21,7 +21,16 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable([
+    'sso_subject',
+    'name',
+    'email',
+    'email_verified_at',
+    'avatar_url',
+    'sso_roles',
+    'last_sso_login_at',
+    'password',
+])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -37,6 +46,8 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'sso_roles' => 'array',
+            'last_sso_login_at' => 'datetime',
             'password' => 'hashed',
         ];
     }
