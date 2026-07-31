@@ -101,9 +101,19 @@ class SisfoSsoController extends Controller
                 ->get(config('sso.base_url').'/api/sso/user');
 
             if ($profileResponse->failed()) {
-                Log::warning('Pengambilan profil SSO SISFO gagal.', ['status' => $profileResponse->status()]);
+                Log::warning('Pengambilan profil SSO SISFO gagal.', [
+                    'status' => $profileResponse->status(),
+                    'content_type' => $profileResponse->header('Content-Type'),
+                    'response' => Str::limit($profileResponse->body(), 1000),
+                ]);
 
-                return $this->failed($request, 'Profil pengguna tidak dapat diambil dari SISFO.');
+                $message = match ($profileResponse->status()) {
+                    401 => 'Token diterima, tetapi endpoint profil SISFO menolak autentikasi. Periksa penerusan header Authorization pada Nginx SSO.',
+                    403 => 'Akun berhasil masuk, tetapi token tidak memiliki izin profile:read.',
+                    default => 'Profil pengguna tidak dapat diambil dari SISFO.',
+                };
+
+                return $this->failed($request, $message);
             }
 
             $profile = $profileResponse->json();

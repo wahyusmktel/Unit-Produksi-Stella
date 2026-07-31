@@ -67,6 +67,26 @@ class ExampleTest extends TestCase
         ]);
     }
 
+    public function test_profile_authentication_failure_returns_actionable_message(): void
+    {
+        config()->set('sso.base_url', 'https://sso.test');
+        config()->set('sso.client_id', 'client-123');
+        config()->set('sso.redirect_uri', 'https://up.test/auth/sisfo/callback');
+
+        Http::fake([
+            'https://sso.test/oauth/token' => Http::response(['access_token' => 'access-token']),
+            'https://sso.test/api/sso/user' => Http::response(['message' => 'Unauthenticated.'], 401),
+        ]);
+
+        $response = $this
+            ->withSession(['sso_state' => 'expected-state', 'sso_code_verifier' => 'verifier'])
+            ->get(route('sso.callback', ['state' => 'expected-state', 'code' => 'authorization-code']));
+
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHas('sso_error', fn (string $message) => str_contains($message, 'Authorization'));
+        $this->assertGuest();
+    }
+
     public function test_logout_invalidates_local_session(): void
     {
         $user = User::factory()->create();

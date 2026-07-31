@@ -35,13 +35,26 @@ php artisan key:generate
 
 Project mengunci resolusi dependency Composer ke platform PHP 8.3. Jangan menjalankan `composer update` di server produksi. File `composer.lock` dari repository sudah disiapkan agar kompatibel dengan PHP 8.3.
 
-Siapkan database MySQL terpisah untuk aplikasi Unit Produksi. Contoh:
+Siapkan database MySQL terpisah untuk aplikasi Unit Produksi. Masuk melalui akun administratif MySQL di Ubuntu:
+
+```bash
+sudo mysql
+```
+
+Jangan menggunakan perintah `mysql` tanpa `sudo` untuk tahap ini karena perintah tersebut dapat masuk sebagai user MySQL biasa yang tidak memiliki izin membuat database. Setelah prompt berubah menjadi `mysql>`, jalankan:
 
 ```sql
 CREATE DATABASE unit_produksi CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER 'unit_produksi'@'localhost' IDENTIFIED BY 'GANTI_PASSWORD_KUAT';
 GRANT ALL PRIVILEGES ON unit_produksi.* TO 'unit_produksi'@'localhost';
 FLUSH PRIVILEGES;
+EXIT;
+```
+
+Uji akun database aplikasi sebelum melanjutkan:
+
+```bash
+mysql -u unit_produksi -p unit_produksi
 ```
 
 Konfigurasi penting `.env` produksi:
@@ -51,6 +64,7 @@ APP_NAME="Unit Produksi SMK Telkom Lampung"
 APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://up.smktelkom-lpg.id
+ASSET_URL=https://up.smktelkom-lpg.id
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
@@ -108,6 +122,7 @@ server {
 
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
+        fastcgi_param HTTP_AUTHORIZATION $http_authorization;
         fastcgi_pass unix:/run/php/php8.3-fpm.sock;
     }
 
@@ -127,6 +142,16 @@ curl -I -H "Host: up.smktelkom-lpg.id" http://127.0.0.1
 ```
 
 Respons `200` atau `302` menandakan virtual host sudah dikenali.
+
+Karena aplikasi berada di belakang Cloudflare Tunnel, Laravel telah dikonfigurasi untuk memercayai forwarded proxy headers. `ASSET_URL` produksi tetap diisi HTTPS agar URL CSS, JavaScript, dan font tidak pernah dihasilkan memakai HTTP.
+
+Virtual host SISFO yang melayani `sso.smktelkom-lpg.id` juga wajib meneruskan bearer token ke PHP-FPM. Tambahkan baris berikut di dalam blok `location ~ \.php$` milik SISFO:
+
+```nginx
+fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+```
+
+Tanpa parameter tersebut, endpoint `https://sso.smktelkom-lpg.id/api/sso/user` akan menerima request tanpa token dan membalas `401 Unauthenticated` meskipun proses `/oauth/token` berhasil.
 
 ## 4. Subdomain melalui Cloudflare Tunnel
 
