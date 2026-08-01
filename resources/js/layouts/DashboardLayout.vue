@@ -11,6 +11,8 @@ import {
     Package,
     PanelLeftClose,
     Settings,
+    Store,
+    Truck,
     Users,
     X,
 } from '@lucide/vue';
@@ -73,6 +75,20 @@ const navItems = computed(() => [
         href: '/adminup/products',
         active: currentPath.value.startsWith('/adminup/products'),
         enabled: isAdminUp.value,
+    },
+    {
+        label: 'Supplier',
+        icon: Truck,
+        href: '/adminup/suppliers',
+        active: currentPath.value.startsWith('/adminup/suppliers'),
+        enabled: isAdminUp.value,
+    },
+    {
+        label: 'Lihat Store',
+        icon: Store,
+        href: '/store',
+        active: false,
+        enabled: true,
     },
     { label: 'Tim', icon: Users, href: '#', active: false, enabled: false },
     {

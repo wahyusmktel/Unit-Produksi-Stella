@@ -35,4 +35,16 @@ return [
         ],
     ],
 
+    'dana' => [
+        'base_url' => env('DANA_BASE_URL', 'https://api.sandbox.dana.id'),
+        'partner_id' => env('DANA_PARTNER_ID'),
+        'merchant_id' => env('DANA_MERCHANT_ID'),
+        'sub_merchant_id' => env('DANA_SUB_MERCHANT_ID'),
+        'store_id' => env('DANA_STORE_ID'),
+        'channel_id' => env('DANA_CHANNEL_ID', '95221'),
+        'private_key' => env('DANA_PRIVATE_KEY'),
+        'public_key' => env('DANA_PUBLIC_KEY'),
+        'qris_expiry_minutes' => env('DANA_QRIS_EXPIRY_MINUTES', 15),
+    ],
+
 ];

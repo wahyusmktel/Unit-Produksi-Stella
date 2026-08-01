@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'adminup' => EnsureAdminUpRole::class,
         ]);
+        $middleware->validateCsrfTokens(except: ['payments/dana/notify']);
 
         $middleware->web(append: [
             HandleInertiaRequests::class,

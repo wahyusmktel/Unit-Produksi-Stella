@@ -31,11 +31,13 @@ type Category = {
 type Product = {
     id: number;
     product_category_id: number;
+    supplier_id: number | null;
     name: string;
     sku: string;
     barcode: string | null;
     description: string | null;
     price: string;
+    supplier_price: string;
     stock: number;
     unit: string;
     status: 'draft' | 'active' | 'archived';
@@ -44,7 +46,10 @@ type Product = {
     image_urls: string[];
     images: Array<{ id: number; image_url: string; sort_order: number }>;
     category: { id: number; name: string };
+    supplier: Supplier | null;
 };
+
+type Supplier = { id: number; code: string; name: string };
 
 type PaginationLink = {
     url: string | null;
@@ -61,12 +66,20 @@ const props = defineProps<{
         total: number;
     };
     categories: Category[];
-    filters: { search: string; category: string | number; status: string };
+    suppliers: Supplier[];
+    filters: {
+        search: string;
+        category: string | number;
+        status: string;
+        supplier: string | number;
+    };
     stats: {
         total: number;
         active: number;
         low_stock: number;
         inventory_value: number | string;
+        inventory_cost: number | string;
+        projected_profit: number | string;
     };
 }>();
 
@@ -80,6 +93,7 @@ const newImagePreviews = ref<Array<{ file: File; url: string }>>([]);
 const search = ref(props.filters.search || '');
 const categoryFilter = ref(String(props.filters.category || ''));
 const statusFilter = ref(props.filters.status || '');
+const supplierFilter = ref(String(props.filters.supplier || ''));
 
 const flashSuccess = computed(() => page.props.flash?.success as string | null);
 const categoryError = computed(
@@ -88,10 +102,12 @@ const categoryError = computed(
 
 const productForm = useForm({
     product_category_id: '',
+    supplier_id: '',
     name: '',
     barcode: '',
     description: '',
     price: '',
+    supplier_price: '',
     stock: 0,
     unit: 'pcs',
     status: 'draft',
@@ -126,6 +142,18 @@ const statItems = computed(() => [
         value: formatCurrency(props.stats.inventory_value),
         icon: CircleDollarSign,
         tone: 'red',
+    },
+    {
+        label: 'Modal persediaan',
+        value: formatCurrency(props.stats.inventory_cost),
+        icon: CircleDollarSign,
+        tone: 'graphite',
+    },
+    {
+        label: 'Potensi laba',
+        value: formatCurrency(props.stats.projected_profit),
+        icon: CircleDollarSign,
+        tone: 'green',
     },
 ]);
 
@@ -185,10 +213,14 @@ function openEdit(product: Product): void {
     editingProduct.value = product;
     productForm.clearErrors();
     productForm.product_category_id = String(product.product_category_id);
+    productForm.supplier_id = product.supplier_id
+        ? String(product.supplier_id)
+        : '';
     productForm.name = product.name;
     productForm.barcode = product.barcode || '';
     productForm.description = product.description || '';
     productForm.price = String(Number(product.price));
+    productForm.supplier_price = String(Number(product.supplier_price || 0));
     productForm.stock = product.stock;
     productForm.unit = product.unit;
     productForm.status = product.status;
@@ -306,6 +338,7 @@ function applyFilters(): void {
             search: search.value || undefined,
             category: categoryFilter.value || undefined,
             status: statusFilter.value || undefined,
+            supplier: supplierFilter.value || undefined,
         },
         { preserveState: true, replace: true },
     );
@@ -315,6 +348,7 @@ function clearFilters(): void {
     search.value = '';
     categoryFilter.value = '';
     statusFilter.value = '';
+    supplierFilter.value = '';
     applyFilters();
 }
 
@@ -396,9 +430,27 @@ onBeforeUnmount(resetImageEditor);
                         <option value="active">Aktif</option>
                         <option value="archived">Diarsipkan</option>
                     </select>
+                    <select
+                        v-model="supplierFilter"
+                        aria-label="Filter supplier"
+                    >
+                        <option value="">Semua supplier</option>
+                        <option
+                            v-for="supplier in suppliers"
+                            :key="supplier.id"
+                            :value="supplier.id"
+                        >
+                            {{ supplier.name }}
+                        </option>
+                    </select>
                     <button type="submit">Terapkan</button>
                     <button
-                        v-if="search || categoryFilter || statusFilter"
+                        v-if="
+                            search ||
+                            categoryFilter ||
+                            statusFilter ||
+                            supplierFilter
+                        "
                         type="button"
                         class="clear-filter"
                         @click="clearFilters"
@@ -413,6 +465,7 @@ onBeforeUnmount(resetImageEditor);
                             <tr>
                                 <th>Produk</th>
                                 <th>Kategori</th>
+                                <th>Supplier</th>
                                 <th>Harga</th>
                                 <th>Stok</th>
                                 <th>Status</th>
@@ -448,10 +501,19 @@ onBeforeUnmount(resetImageEditor);
                                     </div>
                                 </td>
                                 <td>{{ product.category.name }}</td>
+                                <td>{{ product.supplier?.name || '-' }}</td>
                                 <td>
                                     <strong>{{
                                         formatCurrency(product.price)
                                     }}</strong>
+                                    <small class="table-subvalue"
+                                        >Modal
+                                        {{
+                                            formatCurrency(
+                                                product.supplier_price,
+                                            )
+                                        }}</small
+                                    >
                                 </td>
                                 <td>
                                     <span
@@ -709,6 +771,21 @@ onBeforeUnmount(resetImageEditor);
                             ></label
                         >
                         <label class="span-2"
+                            ><span>Supplier produk</span
+                            ><select v-model="productForm.supplier_id">
+                                <option value="">Tanpa supplier</option>
+                                <option
+                                    v-for="supplier in suppliers"
+                                    :key="supplier.id"
+                                    :value="String(supplier.id)"
+                                >
+                                    {{ supplier.name }} - {{ supplier.code }}
+                                </option></select
+                            ><small v-if="productForm.errors.supplier_id">{{
+                                productForm.errors.supplier_id
+                            }}</small></label
+                        >
+                        <label class="span-2"
                             ><span>Nomor barcode barang</span>
                             <div class="barcode-input-group">
                                 <input
@@ -748,6 +825,26 @@ onBeforeUnmount(resetImageEditor);
                             <small v-if="productForm.errors.price">{{
                                 productForm.errors.price
                             }}</small></label
+                        >
+                        <label
+                            ><span>Harga supplier</span>
+                            <div class="input-prefix">
+                                <b>Rp</b
+                                ><input
+                                    v-model="productForm.supplier_price"
+                                    type="number"
+                                    min="0"
+                                    step="500"
+                                    placeholder="0"
+                                />
+                            </div>
+                            <small v-if="productForm.errors.supplier_price">{{
+                                productForm.errors.supplier_price
+                            }}</small
+                            ><small v-else class="form-hint"
+                                >Digunakan sebagai harga modal untuk menghitung
+                                laba.</small
+                            ></label
                         >
                         <label
                             ><span>Stok</span

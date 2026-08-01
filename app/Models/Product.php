@@ -10,12 +10,14 @@ class Product extends Model
 {
     protected $fillable = [
         'product_category_id',
+        'supplier_id',
         'name',
         'slug',
         'sku',
         'barcode',
         'description',
         'price',
+        'supplier_price',
         'stock',
         'unit',
         'image_path',
@@ -32,6 +34,7 @@ class Product extends Model
     {
         return [
             'price' => 'decimal:2',
+            'supplier_price' => 'decimal:2',
             'stock' => 'integer',
             'is_featured' => 'boolean',
         ];
@@ -43,6 +46,18 @@ class Product extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class, 'product_category_id');
+    }
+
+    /** @return BelongsTo<Supplier, $this> */
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    /** @return HasMany<OrderItem, $this> */
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
     }
 
     /**

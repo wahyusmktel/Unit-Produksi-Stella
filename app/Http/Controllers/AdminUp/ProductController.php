@@ -5,6 +5,7 @@ namespace App\Http\Controllers\AdminUp;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\Supplier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -25,11 +26,13 @@ class ProductController extends Controller
             'search' => ['nullable', 'string', 'max:100'],
             'category' => ['nullable', 'integer', 'exists:product_categories,id'],
             'status' => ['nullable', Rule::in(['draft', 'active', 'archived'])],
+            'supplier' => ['nullable', 'integer', 'exists:suppliers,id'],
         ]);
 
         $products = Product::query()
             ->with([
                 'category:id,name',
+                'supplier:id,name,code',
                 'images:id,product_id,image_path,sort_order',
             ])
             ->when($filters['search'] ?? null, function ($query, string $search) {
@@ -41,6 +44,7 @@ class ProductController extends Controller
             })
             ->when($filters['category'] ?? null, fn ($query, int $category) => $query->where('product_category_id', $category))
             ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
+            ->when($filters['supplier'] ?? null, fn ($query, int $supplier) => $query->where('supplier_id', $supplier))
             ->latest()
             ->paginate(10)
             ->withQueryString();
@@ -51,16 +55,20 @@ class ProductController extends Controller
                 ->withCount('products')
                 ->orderBy('name')
                 ->get(),
+            'suppliers' => Supplier::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
             'filters' => [
                 'search' => $filters['search'] ?? '',
                 'category' => $filters['category'] ?? '',
                 'status' => $filters['status'] ?? '',
+                'supplier' => $filters['supplier'] ?? '',
             ],
             'stats' => [
                 'total' => Product::count(),
                 'active' => Product::where('status', 'active')->count(),
                 'low_stock' => Product::where('stock', '<=', 5)->count(),
                 'inventory_value' => Product::query()->sum(DB::raw('price * stock')),
+                'inventory_cost' => Product::query()->sum(DB::raw('supplier_price * stock')),
+                'projected_profit' => Product::query()->sum(DB::raw('(price - supplier_price) * stock')),
             ],
         ]);
     }
@@ -168,10 +176,12 @@ class ProductController extends Controller
     {
         $data = $request->validate([
             'product_category_id' => ['required', 'integer', 'exists:product_categories,id'],
+            'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
             'name' => ['required', 'string', 'max:160'],
             'barcode' => ['nullable', 'string', 'max:100', Rule::unique('products', 'barcode')->ignore($product?->id)],
             'description' => ['nullable', 'string', 'max:5000'],
             'price' => ['required', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'supplier_price' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99', 'lte:price'],
             'stock' => ['required', 'integer', 'min:0', 'max:4294967295'],
             'unit' => ['required', Rule::in(['pcs', 'pack', 'box', 'bottle', 'portion', 'set', 'other'])],
             'status' => ['required', Rule::in(['draft', 'active', 'archived'])],
