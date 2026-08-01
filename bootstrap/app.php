@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureAdminUpRole;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -17,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // Cloudflare Tunnel terminates HTTPS before forwarding to the local Nginx origin.
         $middleware->trustProxies(at: '*');
         $middleware->redirectGuestsTo(fn () => route('login'));
+        $middleware->alias([
+            'adminup' => EnsureAdminUpRole::class,
+        ]);
 
         $middleware->web(append: [
             HandleInertiaRequests::class,

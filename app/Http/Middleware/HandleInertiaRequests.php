@@ -47,6 +47,10 @@ class HandleInertiaRequests extends Middleware
                     'sso_roles',
                 ]),
             ],
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
+            ],
         ];
     }
 }

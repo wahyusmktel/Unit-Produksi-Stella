@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $remember_token
+ * @property array<int, string> $sso_roles
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */

@@ -220,3 +220,27 @@ curl -I https://sso.smktelkom-lpg.id/masuk
 ```
 
 Buka `https://up.smktelkom-lpg.id/login`, pilih **Masuk dengan SISFO**, setujui akses, dan pastikan callback kembali ke dashboard Unit Produksi.
+
+## 7. Aktivasi role adminup dan katalog produk
+
+Role `adminup` bersumber dari SISFO dan dikirim ke aplikasi Unit Produksi melalui profil SSO. Setelah kode SISFO terbaru selesai di-deploy, buat role tersebut dengan:
+
+```bash
+cd /var/www/Kesiswaan-SMK-Telkom
+php artisan db:seed --class=RoleSeeder --force
+php artisan permission:cache-reset
+```
+
+Masuk ke SISFO sebagai **Super Admin**, buka **Manajemen Pengguna**, lalu tambahkan role `adminup` kepada pegawai yang mengelola Unit Produksi. Pengguna perlu keluar dari aplikasi Unit Produksi dan masuk kembali melalui SSO supaya data role lokal diperbarui.
+
+Pastikan migrasi katalog di aplikasi Unit Produksi sudah dijalankan:
+
+```bash
+cd /var/www/Unit-Produksi-Stella
+php artisan migrate --force
+php artisan storage:link
+```
+
+Setelah login ulang, menu **Produk** hanya muncul bagi pengguna dengan role `adminup`. Halaman tersebut mencakup kategori, data produk, stok, harga, gambar, status publikasi, pencarian, filter, dan pagination.
+
+Tahap katalog ini belum mengaktifkan transaksi QRIS. Sebelum toko publik dan pembayaran dibuat, tentukan penyedia payment gateway, kredensial merchant, callback/webhook, serta aturan settlement dan pembatalan pembayaran.
