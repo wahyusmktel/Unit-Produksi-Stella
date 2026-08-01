@@ -158,6 +158,101 @@ async function handleDetection(value: string): Promise<void> {
     await stopScanner();
 }
 
+function errorText(error: unknown): string {
+    return error instanceof Error
+        ? `${error.name} ${error.message}`
+        : String(error);
+}
+
+function isPermissionError(error: unknown): boolean {
+    return /NotAllowed|Permission|denied/i.test(errorText(error));
+}
+
+async function startCamera(
+    cameraIdOrConfig: string | MediaTrackConstraints,
+): Promise<void> {
+    await stopScanner();
+    await nextTick();
+    scanner = await createScanner();
+
+    try {
+        await scanner.start(
+            cameraIdOrConfig,
+            {
+                fps: 18,
+                qrbox: (viewfinderWidth, viewfinderHeight) => ({
+                    width: Math.floor(viewfinderWidth * 0.92),
+                    height: Math.floor(Math.min(190, viewfinderHeight * 0.42)),
+                }),
+                aspectRatio: 1.7778,
+                disableFlip: false,
+            },
+            handleDetection,
+            () => undefined,
+        );
+    } catch (error) {
+        await stopScanner();
+
+        throw error;
+    }
+}
+
+async function startCameraWithFallbacks(): Promise<void> {
+    const constraintAttempts: MediaTrackConstraints[] = [
+        { facingMode: 'environment' },
+        { facingMode: { ideal: 'environment' } },
+    ];
+    let lastError: unknown = new Error('Tidak ada kamera yang dapat dibuka.');
+
+    for (const constraints of constraintAttempts) {
+        try {
+            await startCamera(constraints);
+
+            return;
+        } catch (error) {
+            lastError = error;
+
+            if (isPermissionError(error)) {
+                throw error;
+            }
+        }
+    }
+
+    try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        const cameras = await Html5Qrcode.getCameras();
+        const isRearCamera = (label: string) =>
+            /back|rear|environment|belakang/i.test(label);
+        const orderedCameras = [...cameras].sort(
+            (left, right) =>
+                Number(isRearCamera(right.label)) -
+                Number(isRearCamera(left.label)),
+        );
+
+        for (const camera of orderedCameras) {
+            try {
+                await startCamera(camera.id);
+
+                return;
+            } catch (error) {
+                lastError = error;
+
+                if (isPermissionError(error)) {
+                    throw error;
+                }
+            }
+        }
+    } catch (error) {
+        if (isPermissionError(error)) {
+            throw error;
+        }
+
+        lastError = error;
+    }
+
+    throw lastError;
+}
+
 async function startScanner(): Promise<void> {
     errorMessage.value = '';
     controlMessage.value = '';
@@ -176,38 +271,28 @@ async function startScanner(): Promise<void> {
     }
 
     try {
-        scanner = await createScanner();
-
-        await scanner.start(
-            {
-                facingMode: { ideal: 'environment' },
-                width: { ideal: 1920, min: 640 },
-                height: { ideal: 1080, min: 480 },
-            },
-            {
-                fps: 18,
-                qrbox: (viewfinderWidth, viewfinderHeight) => ({
-                    width: Math.floor(viewfinderWidth * 0.92),
-                    height: Math.floor(Math.min(190, viewfinderHeight * 0.42)),
-                }),
-                aspectRatio: 1.7778,
-                disableFlip: false,
-            },
-            handleDetection,
-            () => undefined,
-        );
-
+        await startCameraWithFallbacks();
         await configureCameraFeatures();
     } catch (error) {
-        const technicalMessage =
-            error instanceof Error
-                ? `${error.name} ${error.message}`
-                : String(error);
-        errorMessage.value = /NotAllowed|Permission|denied/i.test(
-            technicalMessage,
-        )
-            ? 'Izin kamera ditolak. Aktifkan izin kamera pada browser lalu coba kembali.'
-            : 'Kamera tidak dapat dibuka. Pastikan kamera tersedia dan tidak sedang digunakan aplikasi lain.';
+        const technicalMessage = errorText(error);
+
+        if (isPermissionError(error)) {
+            errorMessage.value =
+                'Izin kamera ditolak. Buka pengaturan situs di browser, izinkan kamera, lalu muat ulang halaman.';
+        } else if (
+            /NotFound|DevicesNotFound|no camera/i.test(technicalMessage)
+        ) {
+            errorMessage.value =
+                'Kamera tidak ditemukan pada perangkat ini. Gunakan fitur Scan dari foto.';
+        } else if (
+            /NotReadable|TrackStart|Could not start/i.test(technicalMessage)
+        ) {
+            errorMessage.value =
+                'Kamera sedang digunakan aplikasi lain. Tutup aplikasi kamera atau video call, lalu coba kembali.';
+        } else {
+            errorMessage.value =
+                'Kamera belum dapat dibuka dengan konfigurasi perangkat ini. Coba muat ulang halaman atau gunakan Scan dari foto.';
+        }
     } finally {
         isStarting.value = false;
     }
@@ -317,7 +402,11 @@ onBeforeUnmount(stopScanner);
                     </div>
                     <div v-if="errorMessage" class="barcode-camera-error">
                         <strong>{{ errorMessage }}</strong>
-                        <button type="button" @click="startScanner">
+                        <button
+                            type="button"
+                            :disabled="isStarting"
+                            @click.stop="startScanner"
+                        >
                             <RefreshCw :size="16" /> Coba kamera kembali
                         </button>
                     </div>
