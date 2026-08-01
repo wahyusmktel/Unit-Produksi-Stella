@@ -2,6 +2,7 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import {
     Archive,
+    Camera,
     CircleDollarSign,
     Image as ImageIcon,
     Package,
@@ -15,6 +16,8 @@ import {
     X,
 } from '@lucide/vue';
 import { computed, onBeforeUnmount, ref } from 'vue';
+import BarcodeScannerModal from '../../../components/BarcodeScannerModal.vue';
+import ProductImageSlider from '../../../components/ProductImageSlider.vue';
 import DashboardLayout from '../../../layouts/DashboardLayout.vue';
 
 type Category = {
@@ -30,6 +33,7 @@ type Product = {
     product_category_id: number;
     name: string;
     sku: string;
+    barcode: string | null;
     description: string | null;
     price: string;
     stock: number;
@@ -37,6 +41,8 @@ type Product = {
     status: 'draft' | 'active' | 'archived';
     is_featured: boolean;
     image_url: string | null;
+    image_urls: string[];
+    images: Array<{ id: number; image_url: string; sort_order: number }>;
     category: { id: number; name: string };
 };
 
@@ -67,8 +73,10 @@ const props = defineProps<{
 const page = usePage();
 const showProductModal = ref(false);
 const showCategoryModal = ref(false);
+const showBarcodeScanner = ref(false);
 const editingProduct = ref<Product | null>(null);
-const imagePreview = ref<string | null>(null);
+const existingImages = ref<Product['images']>([]);
+const newImagePreviews = ref<Array<{ file: File; url: string }>>([]);
 const search = ref(props.filters.search || '');
 const categoryFilter = ref(String(props.filters.category || ''));
 const statusFilter = ref(props.filters.status || '');
@@ -81,14 +89,15 @@ const categoryError = computed(
 const productForm = useForm({
     product_category_id: '',
     name: '',
-    sku: '',
+    barcode: '',
     description: '',
     price: '',
     stock: 0,
     unit: 'pcs',
     status: 'draft',
     is_featured: false,
-    image: null as File | null,
+    images: [] as File[],
+    remove_image_ids: [] as number[],
 });
 
 const categoryForm = useForm({ name: '', description: '' });
@@ -146,18 +155,18 @@ function unitLabel(unit: string): string {
     );
 }
 
-function resetPreview(): void {
-    if (imagePreview.value?.startsWith('blob:')) {
-        URL.revokeObjectURL(imagePreview.value);
-    }
-
-    imagePreview.value = null;
+function resetImageEditor(): void {
+    newImagePreviews.value.forEach(({ url }) => URL.revokeObjectURL(url));
+    newImagePreviews.value = [];
+    existingImages.value = [];
+    productForm.images = [];
+    productForm.remove_image_ids = [];
 }
 
 function paginationLabel(label: string): string {
     return label
-        .replace('&laquo;', '‹')
-        .replace('&raquo;', '›')
+        .replace('&laquo;', '<')
+        .replace('&raquo;', '>')
         .replace(/<[^>]*>/g, '');
 }
 
@@ -168,7 +177,7 @@ function openCreate(): void {
     productForm.stock = 0;
     productForm.unit = 'pcs';
     productForm.status = 'draft';
-    resetPreview();
+    resetImageEditor();
     showProductModal.value = true;
 }
 
@@ -177,31 +186,73 @@ function openEdit(product: Product): void {
     productForm.clearErrors();
     productForm.product_category_id = String(product.product_category_id);
     productForm.name = product.name;
-    productForm.sku = product.sku;
+    productForm.barcode = product.barcode || '';
     productForm.description = product.description || '';
     productForm.price = String(Number(product.price));
     productForm.stock = product.stock;
     productForm.unit = product.unit;
     productForm.status = product.status;
     productForm.is_featured = product.is_featured;
-    productForm.image = null;
-    resetPreview();
-    imagePreview.value = product.image_url;
+    resetImageEditor();
+    existingImages.value = [...product.images];
     showProductModal.value = true;
 }
 
 function closeProductModal(): void {
     showProductModal.value = false;
-    resetPreview();
+    showBarcodeScanner.value = false;
+    resetImageEditor();
 }
 
-function selectImage(event: Event): void {
-    const file = (event.target as HTMLInputElement).files?.[0] || null;
-    productForm.image = file;
-    resetPreview();
-    imagePreview.value = file
-        ? URL.createObjectURL(file)
-        : editingProduct.value?.image_url || null;
+function selectImages(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const selectedFiles = Array.from(input.files || []);
+    const availableSlots = Math.max(
+        0,
+        8 - existingImages.value.length - newImagePreviews.value.length,
+    );
+
+    if (selectedFiles.length > availableSlots) {
+        productForm.setError(
+            'images',
+            'Maksimal delapan foto untuk setiap produk.',
+        );
+    } else {
+        productForm.clearErrors('images');
+    }
+
+    selectedFiles.slice(0, availableSlots).forEach((file) => {
+        newImagePreviews.value.push({
+            file,
+            url: URL.createObjectURL(file),
+        });
+    });
+    productForm.images = newImagePreviews.value.map(({ file }) => file);
+    input.value = '';
+}
+
+function removeExistingImage(imageId: number): void {
+    productForm.remove_image_ids.push(imageId);
+    existingImages.value = existingImages.value.filter(
+        (image) => image.id !== imageId,
+    );
+}
+
+function removeNewImage(index: number): void {
+    const preview = newImagePreviews.value[index];
+
+    if (preview) {
+        URL.revokeObjectURL(preview.url);
+    }
+
+    newImagePreviews.value.splice(index, 1);
+    productForm.images = newImagePreviews.value.map(({ file }) => file);
+}
+
+function handleBarcodeDetected(value: string): void {
+    productForm.barcode = value;
+    productForm.clearErrors('barcode');
+    showBarcodeScanner.value = false;
 }
 
 function submitProduct(): void {
@@ -267,7 +318,7 @@ function clearFilters(): void {
     applyFilters();
 }
 
-onBeforeUnmount(resetPreview);
+onBeforeUnmount(resetImageEditor);
 </script>
 
 <template>
@@ -324,7 +375,7 @@ onBeforeUnmount(resetPreview);
                         ><Search :size="18" /><input
                             v-model="search"
                             type="search"
-                            placeholder="Cari nama atau SKU produk"
+                            placeholder="Cari nama, SKU, atau barcode"
                     /></label>
                     <select
                         v-model="categoryFilter"
@@ -375,13 +426,11 @@ onBeforeUnmount(resetPreview);
                             >
                                 <td>
                                     <div class="product-identity">
-                                        <div class="product-thumb">
-                                            <img
-                                                v-if="product.image_url"
-                                                :src="product.image_url"
-                                                :alt="product.name"
-                                            /><ImageIcon v-else :size="22" />
-                                        </div>
+                                        <ProductImageSlider
+                                            class="product-thumb"
+                                            :images="product.image_urls"
+                                            :alt="product.name"
+                                        />
                                         <div>
                                             <strong>{{ product.name }}</strong
                                             ><span
@@ -391,6 +440,10 @@ onBeforeUnmount(resetPreview);
                                                     :size="12"
                                                     fill="currentColor"
                                             /></span>
+                                            <small v-if="product.barcode"
+                                                >Barcode:
+                                                {{ product.barcode }}</small
+                                            >
                                         </div>
                                     </div>
                                 </td>
@@ -551,23 +604,65 @@ onBeforeUnmount(resetPreview);
                     </button>
                 </header>
                 <div class="product-form__body">
-                    <label class="image-uploader"
-                        ><input
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            @change="selectImage"
-                        /><img
-                            v-if="imagePreview"
-                            :src="imagePreview"
-                            alt="Pratinjau produk"
-                        /><span v-else
-                            ><ImageIcon :size="28" /><strong
-                                >Unggah foto produk</strong
-                            ><small
-                                >JPG, PNG, atau WebP | maksimal 5 MB</small
-                            ></span
-                        ></label
-                    >
+                    <div class="product-images-editor">
+                        <label class="image-uploader"
+                            ><input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp"
+                                multiple
+                                @change="selectImages"
+                            /><span
+                                ><ImageIcon :size="28" /><strong
+                                    >Tambah foto produk</strong
+                                ><small
+                                    >Maksimal 8 foto, masing-masing 5 MB</small
+                                ></span
+                            ></label
+                        >
+                        <div
+                            v-if="
+                                existingImages.length || newImagePreviews.length
+                            "
+                            class="product-image-preview-list"
+                        >
+                            <div
+                                v-for="image in existingImages"
+                                :key="`existing-${image.id}`"
+                            >
+                                <img :src="image.image_url" alt="Foto produk" />
+                                <button
+                                    type="button"
+                                    title="Hapus foto"
+                                    @click="removeExistingImage(image.id)"
+                                >
+                                    <X :size="13" />
+                                </button>
+                            </div>
+                            <div
+                                v-for="(preview, index) in newImagePreviews"
+                                :key="preview.url"
+                            >
+                                <img :src="preview.url" alt="Foto baru" />
+                                <button
+                                    type="button"
+                                    title="Hapus foto baru"
+                                    @click="removeNewImage(index)"
+                                >
+                                    <X :size="13" />
+                                </button>
+                            </div>
+                        </div>
+                        <small
+                            v-if="productForm.errors.images"
+                            class="error-text"
+                            >{{ productForm.errors.images }}</small
+                        >
+                        <p>
+                            Foto pertama digunakan sebagai sampul. Slider akan
+                            berpindah otomatis dan tetap dapat digerakkan
+                            manual.
+                        </p>
+                    </div>
                     <div class="form-grid">
                         <label class="span-2"
                             ><span>Nama produk</span
@@ -580,14 +675,18 @@ onBeforeUnmount(resetPreview);
                             }}</small></label
                         >
                         <label
-                            ><span>SKU</span
+                            ><span>SKU otomatis</span
                             ><input
-                                v-model="productForm.sku"
+                                :value="
+                                    editingProduct?.sku ||
+                                    'Dibuat otomatis saat disimpan'
+                                "
                                 type="text"
-                                placeholder="UP-MERCH-001"
-                            /><small v-if="productForm.errors.sku">{{
-                                productForm.errors.sku
-                            }}</small></label
+                                readonly
+                            /><small class="form-hint"
+                                >SKU dibuat berdasarkan kategori dan identitas
+                                unik produk.</small
+                            ></label
                         >
                         <label
                             ><span>Kategori</span
@@ -607,6 +706,31 @@ onBeforeUnmount(resetPreview);
                                 >{{
                                     productForm.errors.product_category_id
                                 }}</small
+                            ></label
+                        >
+                        <label class="span-2"
+                            ><span>Nomor barcode barang</span>
+                            <div class="barcode-input-group">
+                                <input
+                                    v-model="productForm.barcode"
+                                    type="text"
+                                    inputmode="numeric"
+                                    placeholder="Ketik atau pindai barcode barang"
+                                />
+                                <button
+                                    type="button"
+                                    title="Pindai barcode dengan kamera"
+                                    @click="showBarcodeScanner = true"
+                                >
+                                    <Camera :size="19" />
+                                </button>
+                            </div>
+                            <small v-if="productForm.errors.barcode">{{
+                                productForm.errors.barcode
+                            }}</small
+                            ><small v-else class="form-hint"
+                                >Mendukung EAN, UPC, Code 39/93/128, ITF,
+                                Codabar, dan QR.</small
                             ></label
                         >
                         <label
@@ -704,6 +828,12 @@ onBeforeUnmount(resetPreview);
                 </footer>
             </form>
         </div>
+
+        <BarcodeScannerModal
+            v-if="showBarcodeScanner"
+            @detected="handleBarcodeDetected"
+            @close="showBarcodeScanner = false"
+        />
 
         <div
             v-if="showCategoryModal"

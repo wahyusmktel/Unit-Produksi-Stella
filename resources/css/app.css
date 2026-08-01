@@ -1261,6 +1261,7 @@ button {
 }
 .catalog-list-panel,
 .category-panel {
+    min-width: 0;
     background: white;
     border: 1px solid #dfe2e4;
 }
@@ -1361,6 +1362,69 @@ button {
     height: 100%;
     object-fit: cover;
 }
+.product-image-slider {
+    position: relative;
+    isolation: isolate;
+}
+.product-image-slider__arrow {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    width: 17px;
+    height: 23px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    opacity: 0;
+    color: white;
+    background: rgba(8, 10, 12, 0.68);
+    border: 0;
+    transform: translateY(-50%);
+    transition: opacity 0.18s ease;
+}
+.product-image-slider:hover .product-image-slider__arrow,
+.product-image-slider:focus-within .product-image-slider__arrow {
+    opacity: 1;
+}
+.product-image-slider__arrow--left {
+    left: 0;
+}
+.product-image-slider__arrow--right {
+    right: 0;
+}
+.product-image-slider__dots {
+    position: absolute;
+    z-index: 2;
+    right: 3px;
+    bottom: 3px;
+    left: 3px;
+    display: flex;
+    justify-content: center;
+    gap: 2px;
+}
+.product-image-slider__dots button {
+    width: 4px;
+    height: 4px;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.66);
+    border: 0;
+    border-radius: 50%;
+}
+.product-image-slider__dots button.active {
+    width: 9px;
+    background: var(--signal);
+    border-radius: 4px;
+}
+.product-image-slider__count {
+    position: absolute;
+    z-index: 2;
+    top: 3px;
+    right: 3px;
+    padding: 2px 3px;
+    color: white;
+    background: rgba(8, 10, 12, 0.65);
+    font-size: 7px;
+}
 .product-identity > div:last-child {
     min-width: 0;
     display: grid;
@@ -1382,6 +1446,11 @@ button {
 }
 .product-identity span svg {
     color: #d9920e;
+}
+.product-identity small {
+    margin-top: 4px;
+    color: #8f969b;
+    font-size: 8px;
 }
 .stock-label {
     font-weight: 700;
@@ -1594,6 +1663,10 @@ button {
     background: rgba(10, 12, 14, 0.68);
     backdrop-filter: blur(5px);
 }
+body:has(.catalog-modal),
+body:has(.barcode-scanner-modal) {
+    overflow: hidden;
+}
 .catalog-modal__panel {
     width: min(760px, 100%);
     max-height: calc(100svh - 48px);
@@ -1686,6 +1759,51 @@ button {
     font-size: 8px;
     line-height: 1.45;
 }
+.product-images-editor {
+    min-width: 0;
+    align-self: start;
+    display: grid;
+    gap: 11px;
+}
+.product-images-editor > p {
+    margin: 0;
+    color: #838a90;
+    font-size: 8px;
+    line-height: 1.5;
+}
+.product-images-editor .error-text {
+    color: var(--signal);
+    font-size: 9px;
+}
+.product-image-preview-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+}
+.product-image-preview-list > div {
+    position: relative;
+    aspect-ratio: 1;
+    overflow: hidden;
+    background: #eef0f1;
+    border: 1px solid #d9dddf;
+}
+.product-image-preview-list img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.product-image-preview-list button {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 23px;
+    height: 23px;
+    display: grid;
+    place-items: center;
+    color: white;
+    background: rgba(8, 10, 12, 0.72);
+    border: 0;
+}
 .form-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1735,10 +1853,17 @@ button {
 .category-form__body textarea:focus {
     border-color: var(--ink);
 }
+.form-grid input[readonly] {
+    color: #737a80;
+    background: #f3f5f5;
+}
 .form-grid label > small,
 .category-form__body label > small {
     color: var(--signal);
     font-size: 9px;
+}
+.form-grid label > small.form-hint {
+    color: #848b90;
 }
 .span-2 {
     grid-column: span 2;
@@ -1757,6 +1882,23 @@ button {
 }
 .input-prefix input {
     border: 0;
+}
+.barcode-input-group {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 42px;
+}
+.barcode-input-group input {
+    border-right: 0;
+}
+.barcode-input-group button {
+    display: grid;
+    place-items: center;
+    color: white;
+    background: var(--ink);
+    border: 0;
+}
+.barcode-input-group button:hover {
+    background: var(--signal);
 }
 .featured-toggle {
     min-height: 55px;
@@ -1791,6 +1933,98 @@ button {
     display: grid;
     gap: 16px;
     overflow-y: auto;
+}
+.barcode-scanner-modal {
+    position: fixed;
+    z-index: 140;
+    inset: 0;
+    padding: 24px;
+    display: grid;
+    place-items: center;
+    background: rgba(8, 10, 12, 0.82);
+    backdrop-filter: blur(8px);
+}
+.barcode-scanner-panel {
+    width: min(620px, 100%);
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.35);
+}
+.barcode-scanner-panel > header {
+    min-height: 82px;
+    padding: 18px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #e2e5e7;
+}
+.barcode-scanner-panel > header p {
+    margin: 0 0 5px;
+    color: var(--signal);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: 1.2px;
+}
+.barcode-scanner-panel > header h2 {
+    margin: 0;
+    font-size: 21px;
+}
+.barcode-scanner-panel > header button {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    color: var(--steel);
+    background: #f1f3f3;
+    border: 0;
+}
+.barcode-scanner-body {
+    position: relative;
+    padding: 20px;
+}
+.barcode-camera-frame {
+    min-height: 310px;
+    overflow: hidden;
+    background: #111416;
+}
+.barcode-camera-frame video {
+    object-fit: cover;
+}
+.barcode-camera-status,
+.barcode-camera-error {
+    position: absolute;
+    inset: 20px 20px 56px;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 10px;
+    padding: 25px;
+    color: white;
+    text-align: center;
+    background: #111416;
+}
+.barcode-camera-status strong,
+.barcode-camera-error strong {
+    max-width: 380px;
+    font-size: 12px;
+    line-height: 1.55;
+}
+.barcode-camera-error button {
+    min-height: 38px;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: white;
+    background: var(--signal);
+    border: 0;
+    font-weight: 700;
+}
+.barcode-scanner-body > p {
+    margin: 12px 0 0;
+    color: #747c82;
+    font-size: 10px;
+    line-height: 1.55;
 }
 
 @media (max-width: 1050px) {
@@ -2056,6 +2290,16 @@ button {
     .image-uploader {
         width: 150px;
         min-height: 150px;
+    }
+    .barcode-scanner-modal {
+        padding: 0;
+        align-items: end;
+    }
+    .barcode-scanner-panel {
+        max-height: 96svh;
+    }
+    .barcode-camera-frame {
+        min-height: 280px;
     }
     .metric-grid {
         grid-template-columns: 1fr 1fr;

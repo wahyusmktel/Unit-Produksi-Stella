@@ -7,10 +7,12 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Throwable;
@@ -26,11 +28,15 @@ class ProductController extends Controller
         ]);
 
         $products = Product::query()
-            ->with('category:id,name')
+            ->with([
+                'category:id,name',
+                'images:id,product_id,image_path,sort_order',
+            ])
             ->when($filters['search'] ?? null, function ($query, string $search) {
                 $query->where(function ($query) use ($search) {
                     $query->where('name', 'like', "%{$search}%")
-                        ->orWhere('sku', 'like', "%{$search}%");
+                        ->orWhere('sku', 'like', "%{$search}%")
+                        ->orWhere('barcode', 'like', "%{$search}%");
                 });
             })
             ->when($filters['category'] ?? null, fn ($query, int $category) => $query->where('product_category_id', $category))
@@ -62,19 +68,30 @@ class ProductController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request);
-        $imagePath = $request->file('image')?->store('products', 'public');
+        $imagePaths = $this->storeUploadedImages($request);
 
         try {
-            Product::create([
-                ...$data,
-                'slug' => $this->uniqueSlug($data['name']),
-                'image_path' => $imagePath,
-                'is_featured' => $request->boolean('is_featured'),
-            ]);
+            DB::transaction(function () use ($data, $imagePaths, $request): void {
+                $category = ProductCategory::query()
+                    ->whereKey((int) $data['product_category_id'])
+                    ->firstOrFail();
+                $product = Product::create([
+                    ...Arr::except($data, ['images', 'remove_image_ids']),
+                    'slug' => $this->uniqueSlug($data['name']),
+                    'sku' => $this->generateSku($category),
+                    'image_path' => $imagePaths[0] ?? null,
+                    'is_featured' => $request->boolean('is_featured'),
+                ]);
+
+                foreach ($imagePaths as $sortOrder => $imagePath) {
+                    $product->images()->create([
+                        'image_path' => $imagePath,
+                        'sort_order' => $sortOrder,
+                    ]);
+                }
+            });
         } catch (Throwable $exception) {
-            if ($imagePath) {
-                Storage::disk('public')->delete($imagePath);
-            }
+            Storage::disk('public')->delete($imagePaths);
 
             throw $exception;
         }
@@ -85,39 +102,61 @@ class ProductController extends Controller
     public function update(Request $request, Product $product): RedirectResponse
     {
         $data = $this->validated($request, $product);
-        $newImagePath = $request->file('image')?->store('products', 'public');
-        $oldImagePath = $product->image_path;
+        $newImagePaths = $this->storeUploadedImages($request);
+        $removeImageIds = array_map('intval', $data['remove_image_ids'] ?? []);
+        $removedImagePaths = $product->images()
+            ->whereKey($removeImageIds)
+            ->pluck('image_path')
+            ->all();
 
         try {
-            $product->update([
-                ...$data,
-                'slug' => $this->uniqueSlug($data['name'], $product),
-                'image_path' => $newImagePath ?: $oldImagePath,
-                'is_featured' => $request->boolean('is_featured'),
-            ]);
+            DB::transaction(function () use ($data, $newImagePaths, $product, $removeImageIds, $request): void {
+                if ($removeImageIds !== []) {
+                    $product->images()->whereKey($removeImageIds)->delete();
+                }
+
+                $sortOrder = 0;
+                $product->images()->orderBy('sort_order')->orderBy('id')->get()
+                    ->each(function ($image) use (&$sortOrder): void {
+                        $image->update(['sort_order' => $sortOrder++]);
+                    });
+
+                foreach ($newImagePaths as $imagePath) {
+                    $product->images()->create([
+                        'image_path' => $imagePath,
+                        'sort_order' => $sortOrder++,
+                    ]);
+                }
+
+                $product->update([
+                    ...Arr::except($data, ['images', 'remove_image_ids']),
+                    'slug' => $this->uniqueSlug($data['name'], $product),
+                    'image_path' => $product->images()->orderBy('sort_order')->value('image_path'),
+                    'is_featured' => $request->boolean('is_featured'),
+                ]);
+            });
         } catch (Throwable $exception) {
-            if ($newImagePath) {
-                Storage::disk('public')->delete($newImagePath);
-            }
+            Storage::disk('public')->delete($newImagePaths);
 
             throw $exception;
         }
 
-        if ($newImagePath && $oldImagePath) {
-            Storage::disk('public')->delete($oldImagePath);
-        }
+        Storage::disk('public')->delete($removedImagePaths);
 
         return back()->with('success', 'Produk berhasil diperbarui.');
     }
 
     public function destroy(Product $product): RedirectResponse
     {
-        $imagePath = $product->image_path;
+        $imagePaths = $product->images()->pluck('image_path')
+            ->push($product->image_path)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
         $product->delete();
 
-        if ($imagePath) {
-            Storage::disk('public')->delete($imagePath);
-        }
+        Storage::disk('public')->delete($imagePaths);
 
         return back()->with('success', 'Produk berhasil dihapus.');
     }
@@ -127,18 +166,68 @@ class ProductController extends Controller
      */
     private function validated(Request $request, ?Product $product = null): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'product_category_id' => ['required', 'integer', 'exists:product_categories,id'],
             'name' => ['required', 'string', 'max:160'],
-            'sku' => ['required', 'string', 'max:60', Rule::unique('products', 'sku')->ignore($product?->id)],
+            'barcode' => ['nullable', 'string', 'max:100', Rule::unique('products', 'barcode')->ignore($product?->id)],
             'description' => ['nullable', 'string', 'max:5000'],
             'price' => ['required', 'numeric', 'min:0', 'max:9999999999999.99'],
             'stock' => ['required', 'integer', 'min:0', 'max:4294967295'],
             'unit' => ['required', Rule::in(['pcs', 'pack', 'box', 'bottle', 'portion', 'set', 'other'])],
             'status' => ['required', Rule::in(['draft', 'active', 'archived'])],
             'is_featured' => ['nullable', 'boolean'],
-            'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'images' => ['nullable', 'array', 'max:8'],
+            'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'remove_image_ids' => ['nullable', 'array'],
+            'remove_image_ids.*' => ['integer', 'exists:product_images,id'],
         ]);
+
+        $removeImageIds = array_map('intval', $data['remove_image_ids'] ?? []);
+        $existingCount = 0;
+
+        if ($product) {
+            $ownedRemoveCount = $product->images()->whereKey($removeImageIds)->count();
+
+            if ($ownedRemoveCount !== count($removeImageIds)) {
+                throw ValidationException::withMessages([
+                    'remove_image_ids' => 'Foto yang dipilih tidak termasuk dalam produk ini.',
+                ]);
+            }
+
+            $existingCount = $product->images()->count() - $ownedRemoveCount;
+        }
+
+        $newImageCount = count($request->file('images', []));
+        if ($existingCount + $newImageCount > 8) {
+            throw ValidationException::withMessages([
+                'images' => 'Maksimal delapan foto untuk setiap produk.',
+            ]);
+        }
+
+        return $data;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function storeUploadedImages(Request $request): array
+    {
+        return collect($request->file('images', []))
+            ->map(fn ($image): string => $image->store('products', 'public'))
+            ->values()
+            ->all();
+    }
+
+    private function generateSku(ProductCategory $category): string
+    {
+        $categoryCode = preg_replace('/[^A-Z0-9]/', '', Str::upper($category->slug));
+        $categoryCode = substr($categoryCode ?: 'GEN', 0, 4);
+
+        do {
+            $sku = 'UP-'.$categoryCode.'-'.now()->format('ymd').'-'.Str::upper(Str::random(4));
+        } while (Product::where('sku', $sku)->exists());
+
+        return $sku;
     }
 
     private function uniqueSlug(string $name, ?Product $except = null): string

@@ -243,4 +243,12 @@ php artisan storage:link
 
 Setelah login ulang, menu **Produk** hanya muncul bagi pengguna dengan role `adminup`. Halaman tersebut mencakup kategori, data produk, stok, harga, gambar, status publikasi, pencarian, filter, dan pagination.
 
+Versi katalog terbaru juga menambahkan galeri maksimal delapan foto, SKU otomatis, nomor barcode unik, dan pemindai barcode melalui kamera. Jalankan deployment normal agar migrasi `product_images` dan kolom `barcode` diterapkan:
+
+```bash
+/home/wahyurah55/deploy_up.sh
+```
+
+Foto produk lama otomatis dimigrasikan menjadi foto pertama pada galeri. Pemindai barcode harus dibuka melalui `https://up.smktelkom-lpg.id` karena browser tidak mengizinkan akses kamera pada koneksi HTTP biasa. Pengguna juga harus memberikan izin kamera saat browser memintanya. Library pemindai sudah berada di bundle aplikasi dan tidak mengambil script dari CDN.
+
 Tahap katalog ini belum mengaktifkan transaksi QRIS. Sebelum toko publik dan pembayaran dibuat, tentukan penyedia payment gateway, kredensial merchant, callback/webhook, serta aturan settlement dan pembatalan pembayaran.

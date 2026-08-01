@@ -6,6 +6,8 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -50,7 +52,7 @@ class AdminUpProductCatalogTest extends TestCase
             ->post(route('adminup.products.store'), [
                 'product_category_id' => $category->id,
                 'name' => 'Template Presentasi Sekolah',
-                'sku' => 'UP-DIGI-001',
+                'barcode' => '8991234567890',
                 'description' => 'Template presentasi siap digunakan.',
                 'price' => 25000,
                 'stock' => 20,
@@ -60,12 +62,15 @@ class AdminUpProductCatalogTest extends TestCase
             ])
             ->assertRedirect();
 
+        $product = Product::where('name', 'Template Presentasi Sekolah')->firstOrFail();
+
         $this->assertDatabaseHas('products', [
             'name' => 'Template Presentasi Sekolah',
-            'sku' => 'UP-DIGI-001',
+            'barcode' => '8991234567890',
             'product_category_id' => $category->id,
             'status' => 'active',
         ]);
+        $this->assertMatchesRegularExpression('/^UP-PROD-\d{6}-[A-Z0-9]{4}$/', $product->sku);
     }
 
     public function test_admin_up_can_update_and_delete_product(): void
@@ -87,7 +92,7 @@ class AdminUpProductCatalogTest extends TestCase
             ->put(route('adminup.products.update', $product), [
                 'product_category_id' => $category->id,
                 'name' => 'Produk Baru',
-                'sku' => 'UP-NEW-001',
+                'barcode' => '1234567890123',
                 'description' => 'Deskripsi yang diperbarui.',
                 'price' => 15000,
                 'stock' => 12,
@@ -100,7 +105,8 @@ class AdminUpProductCatalogTest extends TestCase
         $this->assertDatabaseHas('products', [
             'id' => $product->id,
             'name' => 'Produk Baru',
-            'sku' => 'UP-NEW-001',
+            'sku' => 'UP-OLD-001',
+            'barcode' => '1234567890123',
             'stock' => 12,
         ]);
 
@@ -132,6 +138,90 @@ class AdminUpProductCatalogTest extends TestCase
             ->assertSessionHasErrors('category_delete');
 
         $this->assertDatabaseHas('product_categories', ['id' => $category->id]);
+    }
+
+    public function test_admin_up_can_manage_multiple_product_images(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUp();
+        $category = ProductCategory::firstOrFail();
+
+        $this->actingAs($admin)
+            ->post(route('adminup.products.store'), [
+                'product_category_id' => $category->id,
+                'name' => 'Produk Galeri',
+                'price' => 50000,
+                'stock' => 8,
+                'unit' => 'pcs',
+                'status' => 'active',
+                'images' => [
+                    UploadedFile::fake()->image('depan.jpg'),
+                    UploadedFile::fake()->image('samping.jpg'),
+                    UploadedFile::fake()->image('belakang.jpg'),
+                ],
+            ])
+            ->assertRedirect();
+
+        $product = Product::where('name', 'Produk Galeri')->firstOrFail();
+        $this->assertCount(3, $product->images);
+        $this->assertSame($product->images->first()->image_path, $product->image_path);
+        $product->images->each(fn ($image) => Storage::disk('public')->assertExists($image->image_path));
+
+        $removedImage = $product->images->first();
+        $this->actingAs($admin)
+            ->put(route('adminup.products.update', $product), [
+                'product_category_id' => $category->id,
+                'name' => 'Produk Galeri',
+                'price' => 50000,
+                'stock' => 8,
+                'unit' => 'pcs',
+                'status' => 'active',
+                'remove_image_ids' => [$removedImage->id],
+                'images' => [UploadedFile::fake()->image('detail.jpg')],
+            ])
+            ->assertRedirect();
+
+        $product->refresh();
+        $this->assertCount(3, $product->images);
+        Storage::disk('public')->assertMissing($removedImage->image_path);
+
+        $remainingPaths = $product->images->pluck('image_path')->all();
+        $this->actingAs($admin)
+            ->delete(route('adminup.products.destroy', $product))
+            ->assertRedirect();
+
+        foreach ($remainingPaths as $path) {
+            Storage::disk('public')->assertMissing($path);
+        }
+    }
+
+    public function test_product_barcode_must_be_unique(): void
+    {
+        $admin = $this->adminUp();
+        $category = ProductCategory::firstOrFail();
+        Product::create([
+            'product_category_id' => $category->id,
+            'name' => 'Produk Barcode Pertama',
+            'slug' => 'produk-barcode-pertama',
+            'sku' => 'UP-TEST-001',
+            'barcode' => '8991000000012',
+            'price' => 10000,
+            'stock' => 1,
+            'unit' => 'pcs',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('adminup.products.store'), [
+                'product_category_id' => $category->id,
+                'name' => 'Produk Barcode Kedua',
+                'barcode' => '8991000000012',
+                'price' => 12000,
+                'stock' => 2,
+                'unit' => 'pcs',
+                'status' => 'active',
+            ])
+            ->assertSessionHasErrors('barcode');
     }
 
     private function adminUp(): User

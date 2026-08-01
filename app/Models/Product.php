@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
 {
@@ -12,6 +13,7 @@ class Product extends Model
         'name',
         'slug',
         'sku',
+        'barcode',
         'description',
         'price',
         'stock',
@@ -23,6 +25,7 @@ class Product extends Model
 
     protected $appends = [
         'image_url',
+        'image_urls',
     ];
 
     protected function casts(): array
@@ -42,8 +45,32 @@ class Product extends Model
         return $this->belongsTo(ProductCategory::class, 'product_category_id');
     }
 
+    /**
+     * @return HasMany<ProductImage, $this>
+     */
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class)->orderBy('sort_order')->orderBy('id');
+    }
+
     public function getImageUrlAttribute(): ?string
     {
+        if ($this->relationLoaded('images')) {
+            return $this->images->first()?->image_url;
+        }
+
         return $this->image_path ? '/storage/'.ltrim($this->image_path, '/') : null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function getImageUrlsAttribute(): array
+    {
+        if ($this->relationLoaded('images')) {
+            return $this->images->pluck('image_url')->values()->all();
+        }
+
+        return $this->image_url ? [$this->image_url] : [];
     }
 }
