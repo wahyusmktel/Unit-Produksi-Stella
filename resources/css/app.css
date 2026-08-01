@@ -1979,8 +1979,13 @@ body:has(.barcode-scanner-modal) {
     border: 0;
 }
 .barcode-scanner-body {
-    position: relative;
     padding: 20px;
+}
+.barcode-camera-stage {
+    position: relative;
+    min-height: 310px;
+    overflow: hidden;
+    background: #111416;
 }
 .barcode-camera-frame {
     min-height: 310px;
@@ -1988,12 +1993,15 @@ body:has(.barcode-scanner-modal) {
     background: #111416;
 }
 .barcode-camera-frame video {
+    width: 100% !important;
+    min-height: 310px;
     object-fit: cover;
 }
 .barcode-camera-status,
 .barcode-camera-error {
     position: absolute;
-    inset: 20px 20px 56px;
+    z-index: 4;
+    inset: 0;
     display: grid;
     place-content: center;
     justify-items: center;
@@ -2002,6 +2010,60 @@ body:has(.barcode-scanner-modal) {
     color: white;
     text-align: center;
     background: #111416;
+}
+.barcode-camera-controls {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.barcode-camera-controls > button,
+.barcode-image-scan-button {
+    min-height: 40px;
+    padding: 0 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    color: var(--ink);
+    background: #f1f3f3;
+    border: 1px solid #d9dddf;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.barcode-camera-controls > button.active {
+    color: white;
+    background: var(--signal);
+    border-color: var(--signal);
+}
+.barcode-image-scan-button input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+.barcode-zoom-control {
+    min-height: 40px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    flex: 1 1 170px;
+    gap: 9px;
+    color: var(--steel);
+    background: #f7f8f8;
+    border: 1px solid #e0e3e5;
+}
+.barcode-zoom-control input {
+    width: 100%;
+    accent-color: var(--signal);
+}
+.barcode-control-message {
+    margin-top: 8px;
+    display: block;
+    color: var(--signal);
+    font-size: 9px;
 }
 .barcode-camera-status strong,
 .barcode-camera-error strong {
@@ -2300,6 +2362,14 @@ body:has(.barcode-scanner-modal) {
     }
     .barcode-camera-frame {
         min-height: 280px;
+    }
+    .barcode-camera-stage,
+    .barcode-camera-frame video {
+        min-height: 280px;
+    }
+    .barcode-camera-controls > button,
+    .barcode-image-scan-button {
+        flex: 1 1 auto;
     }
     .metric-grid {
         grid-template-columns: 1fr 1fr;
